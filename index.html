@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unified Inbox</title>
+  <meta name="description" content="One inbox and one calendar for several Gmail accounts.">
+  <meta name="theme-color" content="#f7f7f8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#191919" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230075de'/%3E%3Crect x='7' y='10' width='18' height='13' rx='2' fill='none' stroke='white' stroke-width='2'/%3E%3Cpath d='M8 11.5 16 17l8-5.5' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap">
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    (function () {
+      try {
+        var pref = localStorage.getItem("ui.theme") || "system";
+        var dark = pref === "dark" || (pref !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      } catch (e) {}
+    })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.min.js" integrity="sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL" crossorigin="anonymous"></script>
+  <script src="https://accounts.google.com/gsi/client" async></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <section id="first-run" class="first-run" hidden>
+    <div class="first-card">
+      <p class="eyebrow">Personal</p>
+      <h1>Unified Inbox</h1>
+      <p>One Gmail inbox and one calendar for every account you add. Mail stays in your browser. Nothing is sent to a server of ours.</p>
+      <p>Paste the OAuth client ID from Google Cloud. The steps are written out in <a href="SETUP.md">SETUP.md</a>. You can change the ID later in Settings.</p>
+      <form id="first-run-form">
+        <label for="first-client-id">OAuth client ID</label>
+        <input id="first-client-id" name="clientId" autocomplete="off" spellcheck="false" required placeholder="123-abc.apps.googleusercontent.com">
+        <p id="first-run-error" class="form-error" role="alert" hidden></p>
+        <button class="btn btn-primary" type="submit">Save and continue</button>
+      </form>
+      <p class="fine">Google shows an “unverified app” warning while the client is in Testing. That is expected. Tokens last about an hour, then refresh on their own.</p>
+    </div>
+  </section>
+
+  <div id="app" class="app" hidden>
+    <aside id="sidebar" class="sidebar" aria-label="Sidebar">
+      <div class="sidebar-head">
+        <div class="brand">Unified Inbox</div>
+        <button id="sidebar-close" class="icon-btn mobile-only" type="button" aria-label="Close menu">
+          <span aria-hidden="true">×</span>
+        </button>
+      </div>
+
+      <div class="seg" role="tablist" aria-label="Section">
+        <button type="button" id="tab-mail" role="tab" aria-selected="true" aria-controls="mail-view">Mail</button>
+        <button type="button" id="tab-cal" role="tab" aria-selected="false" aria-controls="cal-view">Calendar</button>
+      </div>
+
+      <div class="sidebar-scroll">
+        <section class="side-section" aria-labelledby="accounts-heading">
+          <h2 id="accounts-heading">Accounts</h2>
+          <ul id="account-list" class="account-list"></ul>
+          <button type="button" id="add-account" class="btn btn-ghost btn-block">Add Gmail account</button>
+        </section>
+
+        <section id="folder-section" class="side-section" aria-labelledby="folders-heading">
+          <h2 id="folders-heading">Folders</h2>
+          <nav class="folder-nav" aria-label="Folders">
+            <button type="button" class="nav-btn" data-folder="inbox" aria-current="page">Inbox</button>
+            <button type="button" class="nav-btn" data-folder="starred">Starred</button>
+            <button type="button" class="nav-btn" data-folder="sent">Sent</button>
+            <button type="button" class="nav-btn" data-folder="all">All</button>
+          </nav>
+        </section>
+
+        <section id="calendar-section" class="side-section" aria-labelledby="calendars-heading" hidden>
+          <h2 id="calendars-heading">Calendars</h2>
+          <ul id="calendar-list" class="calendar-list"></ul>
+        </section>
+      </div>
+
+      <div class="sidebar-foot">
+        <button type="button" id="theme-toggle" class="nav-btn">Dark theme</button>
+        <button type="button" id="open-settings" class="nav-btn">Settings</button>
+        <button type="button" id="open-help" class="nav-btn">Keyboard shortcuts</button>
+      </div>
+    </aside>
+    <button type="button" id="sidebar-backdrop" class="backdrop" hidden aria-label="Close menu"></button>
+
+    <main id="main" class="main">
+      <section id="mail-view" class="view">
+        <header class="toolbar">
+          <button type="button" id="menu-btn" class="icon-btn mobile-only" aria-label="Open menu">
+            <span aria-hidden="true">☰</span>
+          </button>
+          <h1 id="mail-heading" class="view-title">Inbox</h1>
+          <label class="filter">
+            <span class="sr-only">Filter by account</span>
+            <select id="account-filter" aria-label="Filter by account"></select>
+          </label>
+          <button type="button" id="unread-toggle" class="btn btn-ghost" aria-pressed="false">Unread</button>
+          <label class="search">
+            <span class="sr-only" id="search-label">Search mail</span>
+            <input id="search" type="search" placeholder="Search mail" autocomplete="off" aria-labelledby="search-label">
+          </label>
+          <button type="button" id="compose-btn" class="btn btn-primary">Compose</button>
+        </header>
+        <p id="mail-status" class="status" role="status"></p>
+        <div class="mail-split">
+          <div class="list-pane">
+            <div id="list-errors" class="banners"></div>
+            <div id="thread-list" class="thread-list" aria-label="Conversations"></div>
+            <button type="button" id="load-more" class="btn btn-ghost load-more" hidden>Load more</button>
+          </div>
+          <article id="reading" class="reading" aria-label="Conversation">
+            <div id="reading-empty" class="empty">
+              <p>Select a conversation.</p>
+            </div>
+            <div id="reading-body" hidden></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="cal-view" class="view" hidden>
+        <header class="toolbar">
+          <button type="button" id="menu-btn-cal" class="icon-btn mobile-only" aria-label="Open menu">
+            <span aria-hidden="true">☰</span>
+          </button>
+          <h1 id="cal-heading" class="view-title">Calendar</h1>
+          <div class="seg" role="tablist" aria-label="Calendar layout">
+            <button type="button" data-cal="agenda" role="tab" aria-selected="false">Agenda</button>
+            <button type="button" data-cal="week" role="tab" aria-selected="true">Week</button>
+            <button type="button" data-cal="month" role="tab" aria-selected="false">Month</button>
+          </div>
+          <div class="cal-nav">
+            <button type="button" id="cal-prev" class="icon-btn" aria-label="Previous week">‹</button>
+            <button type="button" id="cal-today" class="btn btn-ghost">Today</button>
+            <button type="button" id="cal-next" class="icon-btn" aria-label="Next week">›</button>
+          </div>
+          <button type="button" id="new-event" class="btn btn-primary">New event</button>
+        </header>
+        <div id="cal-errors" class="banners"></div>
+        <div id="cal-canvas" class="cal-canvas" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="compose-dialog" aria-labelledby="compose-title">
+    <form id="compose-form" class="dialog-form">
+      <header class="dialog-head">
+        <h2 id="compose-title">New message</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">×</button>
+      </header>
+      <label>From
+        <select id="compose-from" name="from" required></select>
+      </label>
+      <label>To
+        <input id="compose-to" name="to" type="text" autocomplete="email" required>
+      </label>
+      <label>Cc
+        <input id="compose-cc" name="cc" type="text" autocomplete="off">
+      </label>
+      <label>Bcc
+        <input id="compose-bcc" name="bcc" type="text" autocomplete="off">
+      </label>
+      <label>Subject
+        <input id="compose-subject" name="subject" type="text" autocomplete="off">
+      </label>
+      <label>Message
+        <textarea id="compose-body" name="body" rows="10"></textarea>
+      </label>
+      <p id="compose-error" class="form-error" role="alert" hidden></p>
+      <footer class="dialog-actions">
+        <button type="submit" class="btn btn-primary" id="compose-send">Send</button>
+        <button type="button" class="btn btn-ghost" data-close>Discard</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="event-dialog" aria-labelledby="event-heading">
+    <form id="event-form" class="dialog-form">
+      <header class="dialog-head">
+        <h2 id="event-heading">New event</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">×</button>
+      </header>
+      <label>Calendar
+        <select id="event-calendar" name="calendar" required></select>
+      </label>
+      <label>Title
+        <input id="event-title" name="title" type="text" required autocomplete="off">
+      </label>
+      <label class="check-row">
+        <input id="event-all-day" name="allDay" type="checkbox">
+        All day
+      </label>
+      <div class="split-fields">
+        <label>Start
+          <input id="event-start" name="start" type="datetime-local" required>
+        </label>
+        <label>End
+          <input id="event-end" name="end" type="datetime-local" required>
+        </label>
+      </div>
+      <p class="fine" id="event-zone-note"></p>
+      <label>Location
+        <input id="event-location" name="location" type="text" autocomplete="off">
+      </label>
+      <label>Description
+        <textarea id="event-description" name="description" rows="4"></textarea>
+      </label>
+      <p id="event-error" class="form-error" role="alert" hidden></p>
+      <footer class="dialog-actions">
+        <button type="submit" class="btn btn-primary" id="event-save">Save</button>
+        <button type="button" class="btn btn-danger" id="event-delete" hidden>Delete</button>
+        <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <form id="settings-form" class="dialog-form">
+      <header class="dialog-head">
+        <h2 id="settings-title">Settings</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">×</button>
+      </header>
+      <label>OAuth client ID
+        <input id="settings-client-id" name="clientId" type="text" autocomplete="off" spellcheck="false" placeholder="123-abc.apps.googleusercontent.com">
+      </label>
+      <p class="fine">Saved in this browser only, and used instead of the empty value in <code>config.js</code>. Steps: <a href="SETUP.md">SETUP.md</a>.</p>
+      <label>Timezone
+        <select id="settings-timezone" name="timezone"></select>
+      </label>
+      <label>Theme
+        <select id="settings-theme" name="theme">
+          <option value="system">Match system</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <p class="fine">Access tokens last about an hour. The app refreshes them quietly. They are kept for this tab only, not in long-term storage.</p>
+      <p id="settings-error" class="form-error" role="alert" hidden></p>
+      <footer class="dialog-actions">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <div class="dialog-form">
+      <header class="dialog-head">
+        <h2 id="help-title">Keyboard shortcuts</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">×</button>
+      </header>
+      <table class="help-table">
+        <tbody>
+          <tr><th scope="row"><kbd>j</kbd></th><td>Next conversation</td></tr>
+          <tr><th scope="row"><kbd>k</kbd></th><td>Previous conversation</td></tr>
+          <tr><th scope="row"><kbd>Enter</kbd></th><td>Open conversation</td></tr>
+          <tr><th scope="row"><kbd>e</kbd></th><td>Archive</td></tr>
+          <tr><th scope="row"><kbd>r</kbd></th><td>Reply</td></tr>
+          <tr><th scope="row"><kbd>c</kbd></th><td>Compose</td></tr>
+          <tr><th scope="row"><kbd>/</kbd></th><td>Search</td></tr>
+          <tr><th scope="row"><kbd>Esc</kbd></th><td>Close</td></tr>
+          <tr><th scope="row"><kbd>?</kbd></th><td>Show this help</td></tr>
+        </tbody>
+      </table>
+      <p class="fine">Shortcuts pause while you are typing in a field, and while a dialog is open.</p>
+      <footer class="dialog-actions">
+        <button type="button" class="btn btn-primary" data-close>Close</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite" aria-relevant="additions"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
