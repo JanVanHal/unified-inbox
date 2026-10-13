@@ -134,3 +134,13 @@ export function toast(message, { error = false } = {}) {
 export function accountKey(email) {
   return String(email || "").toLowerCase();
 }
+
+export function contrastColor(background) {
+  const hex = String(background || "").replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return "#191919";
+  const red = parseInt(hex.slice(0, 2), 16);
+  const green = parseInt(hex.slice(2, 4), 16);
+  const blue = parseInt(hex.slice(4, 6), 16);
+  const luma = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+  return luma > 0.62 ? "#191919" : "#ffffff";
+}
