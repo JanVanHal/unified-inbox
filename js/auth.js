@@ -245,16 +245,23 @@ export async function revokeAndRemove(email) {
   let token = memory.get(accountKey(email))?.accessToken || "";
   if (!token) {
     try {
-      token = await ensureAccessToken(email);
+      const response = await requestToken({ prompt: "", loginHint: email });
+      const who = await profileEmail(response.access_token);
+      if (accountKey(who) === accountKey(email)) token = response.access_token;
     } catch {
       token = "";
     }
   }
   if (token && window.google?.accounts?.oauth2?.revoke) {
     await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 4000);
       try {
-        google.accounts.oauth2.revoke(token, () => resolve());
+        google.accounts.oauth2.revoke(token, () => {
+          clearTimeout(timer);
+          resolve();
+        });
       } catch {
+        clearTimeout(timer);
         resolve();
       }
     });
